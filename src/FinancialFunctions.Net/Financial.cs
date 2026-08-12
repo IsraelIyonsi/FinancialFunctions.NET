@@ -126,7 +126,13 @@ public static class Financial
     /// <param name="timing">Whether payments fall due at the start or end of each period. Defaults to end of period.</param>
     /// <returns>The number of periods, which may be fractional.</returns>
     /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="rate"/> is not greater than -1.</exception>
-    /// <exception cref="ArgumentException">Thrown when <paramref name="rate"/> is zero and <paramref name="payment"/> is zero, since the number of periods would be undefined or infinite.</exception>
+    /// <exception cref="ArgumentException">
+    /// Thrown when <paramref name="rate"/> is zero and <paramref name="payment"/> is zero, since the
+    /// number of periods would be undefined or infinite; or when <paramref name="payment"/> does not
+    /// cover the interest that accrues on <paramref name="presentValue"/> at <paramref name="rate"/>,
+    /// so no finite number of periods reaches <paramref name="futureValue"/> (equivalent to Excel's
+    /// <c>#NUM!</c> error for NPER).
+    /// </exception>
     public static double NumberOfPeriods(decimal rate, decimal payment, decimal presentValue, decimal futureValue = 0m, PaymentTiming timing = PaymentTiming.EndOfPeriod)
     {
         ArgumentGuard.EnsureRateAboveDomainFloor(rate, nameof(rate));
@@ -144,8 +150,28 @@ public static class Financial
         var typeAdjustedPayment = payment * (1m + (rate * (int)timing));
         var numerator = (double)(typeAdjustedPayment - (futureValue * rate));
         var denominator = (double)(typeAdjustedPayment + (presentValue * rate));
+        var ratio = numerator / denominator;
 
-        return Math.Log(numerator / denominator) / Math.Log((double)(1m + rate));
+        if (!(ratio > 0.0))
+        {
+            throw new ArgumentException(
+                "No finite number of periods solves this combination of rate, payment, present value and " +
+                "future value; the payment does not cover the interest accruing on the present value at this " +
+                "rate (equivalent to Excel's #NUM! error for NPER).",
+                nameof(payment));
+        }
+
+        var numberOfPeriods = Math.Log(ratio) / Math.Log((double)(1m + rate));
+
+        if (!double.IsFinite(numberOfPeriods))
+        {
+            throw new ArgumentException(
+                "No finite number of periods solves this combination of rate, payment, present value and " +
+                "future value (equivalent to Excel's #NUM! error for NPER).",
+                nameof(payment));
+        }
+
+        return numberOfPeriods;
     }
 
     /// <summary>
@@ -226,14 +252,21 @@ public static class Financial
     /// This is the same tradeoff Excel and LibreOffice make for XNPV.
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="rate"/> is not greater than -1.</exception>
-    /// <exception cref="ArgumentException">Thrown when <paramref name="cashflows"/> is empty, or <paramref name="dates"/> does not contain the same number of entries as <paramref name="cashflows"/>.</exception>
+    /// <exception cref="ArgumentException">
+    /// Thrown when <paramref name="cashflows"/> is empty, <paramref name="dates"/> does not contain the
+    /// same number of entries as <paramref name="cashflows"/>, or <paramref name="dates"/> contains a date
+    /// earlier than <c>dates[0]</c> (matching Excel's XNPV, which returns <c>#NUM!</c> in that case).
+    /// </exception>
+    /// <exception cref="OverflowException">Thrown when the computed present value is too large to represent as a <see cref="decimal"/>.</exception>
     public static decimal NetPresentValue(decimal rate, IReadOnlyList<decimal> cashflows, IReadOnlyList<DateTime> dates)
     {
         ArgumentGuard.EnsureRateAboveDomainFloor(rate, nameof(rate));
         ArgumentGuard.EnsureNotEmpty(cashflows, nameof(cashflows));
         ArgumentGuard.EnsureDatesMatchCashflows(cashflows, dates, nameof(cashflows), nameof(dates));
+        ArgumentGuard.EnsureNoDateBeforeValuationDate(dates, nameof(dates));
 
-        return (decimal)DatedNetPresentValue((double)rate, cashflows, dates);
+        var result = DatedNetPresentValue((double)rate, cashflows, dates);
+        return ToDecimalChecked(result);
     }
 
     /// <summary>
@@ -297,13 +330,19 @@ public static class Financial
     /// See the remarks on <see cref="InternalRateOfReturn(IReadOnlyList{decimal}, double)"/>
     /// regarding multiple-root behavior; the same caveat applies here.
     /// </remarks>
-    /// <exception cref="ArgumentException">Thrown when <paramref name="cashflows"/> has fewer than two entries, does not contain at least one positive and one negative value, or <paramref name="dates"/> does not match <paramref name="cashflows"/> in length.</exception>
+    /// <exception cref="ArgumentException">
+    /// Thrown when <paramref name="cashflows"/> has fewer than two entries, does not contain at least one
+    /// positive and one negative value, <paramref name="dates"/> does not match <paramref name="cashflows"/>
+    /// in length, or <paramref name="dates"/> contains a date earlier than <c>dates[0]</c> (matching Excel's
+    /// XIRR, which returns <c>#NUM!</c> in that case).
+    /// </exception>
     /// <exception cref="FinancialConvergenceException">Thrown when the solver cannot find a rate that satisfies the equation.</exception>
     public static double InternalRateOfReturn(IReadOnlyList<decimal> cashflows, IReadOnlyList<DateTime> dates, double guess = FinancialSolverDefaults.DefaultRateGuess)
     {
         ArgumentGuard.EnsureAtLeastTwoCashflows(cashflows, nameof(cashflows));
         ArgumentGuard.EnsureContainsSignChange(cashflows, nameof(cashflows));
         ArgumentGuard.EnsureDatesMatchCashflows(cashflows, dates, nameof(cashflows), nameof(dates));
+        ArgumentGuard.EnsureNoDateBeforeValuationDate(dates, nameof(dates));
 
         double Equation(double rate) => DatedNetPresentValue(rate, cashflows, dates);
 
@@ -356,6 +395,26 @@ public static class Financial
     private static decimal AnnuityFactor(decimal rate, int numberOfPeriods, decimal growthFactor)
     {
         return rate == 0m ? numberOfPeriods : (growthFactor - 1m) / rate;
+    }
+
+    /// <summary>
+    /// Converts a <see cref="double"/> result to <see cref="decimal"/>, raising a clear,
+    /// documented <see cref="OverflowException"/> instead of the CLR's default one when the
+    /// value falls outside the range <see cref="decimal"/> can represent (for example, a
+    /// discount rate very close to -1 applied over a long time horizon).
+    /// </summary>
+    private static decimal ToDecimalChecked(double value)
+    {
+        const double DecimalMinAsDouble = (double)decimal.MinValue;
+        const double DecimalMaxAsDouble = (double)decimal.MaxValue;
+
+        if (!double.IsFinite(value) || value < DecimalMinAsDouble || value > DecimalMaxAsDouble)
+        {
+            throw new OverflowException(
+                $"The computed value ({value}) is too large in magnitude to represent as a decimal.");
+        }
+
+        return (decimal)value;
     }
 
     private static double DatedNetPresentValue(double rate, IReadOnlyList<decimal> cashflows, IReadOnlyList<DateTime> dates)

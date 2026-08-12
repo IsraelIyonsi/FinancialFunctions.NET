@@ -95,4 +95,50 @@ public class DateCashflowAnalysisTests
         Assert.Throws<ArgumentException>(() =>
             Financial.InternalRateOfReturn(new[] { -100m, 200m, 50m }, DatesFromOffsets(0, 30)));
     }
+
+    [Fact]
+    public void XNpv_rejects_a_date_earlier_than_the_valuation_date()
+    {
+        var cashflows = new[] { -1000m, 500m, 700m };
+        var dates = DatesFromOffsets(0, 90, -30);
+
+        var exception = Assert.Throws<ArgumentException>(() => Financial.NetPresentValue(0.1m, cashflows, dates));
+        Assert.Equal("dates", exception.ParamName);
+    }
+
+    [Fact]
+    public void XIrr_rejects_a_date_earlier_than_the_valuation_date()
+    {
+        var cashflows = new[] { -1000m, 500m, 700m };
+        var dates = DatesFromOffsets(0, 90, -30);
+
+        var exception = Assert.Throws<ArgumentException>(() => Financial.InternalRateOfReturn(cashflows, dates));
+        Assert.Equal("dates", exception.ParamName);
+    }
+
+    [Fact]
+    public void XNpv_allows_dates_after_the_valuation_date_to_be_out_of_chronological_order()
+    {
+        var cashflows = new[] { -10000m, 2750m, 4250m, 3250m, 2750m };
+        var orderedDates = DatesFromOffsets(0, 62, 158, 249, 340);
+        var reorderedCashflows = new[] { -10000m, 4250m, 2750m, 2750m, 3250m };
+        var reorderedDates = new[] { orderedDates[0], orderedDates[2], orderedDates[1], orderedDates[4], orderedDates[3] };
+
+        var expected = Financial.NetPresentValue(0.09m, cashflows, orderedDates);
+        var actual = Financial.NetPresentValue(0.09m, reorderedCashflows, reorderedDates);
+
+        Approximately.Equal(expected, actual, MoneyTolerance);
+    }
+
+    [Fact]
+    public void XNpv_throws_overflow_exception_instead_of_an_unhandled_one_when_result_exceeds_decimal_range()
+    {
+        // A rate a hair above the -1 domain floor makes the discount factor for a
+        // multi-year-out cashflow astronomically large, pushing the present value
+        // far beyond decimal.MaxValue.
+        var cashflows = new[] { -100m, 1_000_000_000m };
+        var dates = DatesFromOffsets(0, 3650);
+
+        Assert.Throws<OverflowException>(() => Financial.NetPresentValue(-0.999999999m, cashflows, dates));
+    }
 }

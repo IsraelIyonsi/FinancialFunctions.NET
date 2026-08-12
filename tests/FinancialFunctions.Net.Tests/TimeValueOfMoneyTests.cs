@@ -133,6 +133,16 @@ public class TimeValueOfMoneyTests
     }
 
     [Fact]
+    public void NumberOfPeriods_throws_instead_of_returning_nan_when_payment_does_not_cover_interest()
+    {
+        // At a 10% periodic rate, a present value of 5000 accrues 500 of interest per period;
+        // a payment of only 100 can never amortize it, so no finite number of periods exists
+        // (Excel's NPER returns #NUM! for this input).
+        var exception = Assert.Throws<ArgumentException>(() => Financial.NumberOfPeriods(0.1m, -100m, 5000m));
+        Assert.Equal("payment", exception.ParamName);
+    }
+
+    [Fact]
     public void Rate_rejects_non_positive_number_of_periods()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => Financial.Rate(0, -100m, 1000m));

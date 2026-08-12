@@ -21,8 +21,9 @@ decimal principal = 200_000m;
 decimal monthlyRate = 0.06m / 12m;
 int termInMonths = 360;
 
-decimal monthlyPayment = Financial.Payment(monthlyRate, termInMonths, -principal);
-// -1199.10 (an outflow, by the PV/FV/PMT sign convention: negative means paid out)
+decimal monthlyPayment = Financial.Payment(monthlyRate, termInMonths, principal);
+// -1199.10 (an outflow, by the PV/FV/PMT sign convention: negative means paid out.
+// principal is passed positive here because it is money received by the borrower.)
 
 var schedule = AmortizationScheduler.GenerateSchedule(principal, monthlyRate, termInMonths);
 Console.WriteLine(schedule[0]);
@@ -42,9 +43,9 @@ var dates = new[]
 {
     new DateTime(2024, 1, 1),
     new DateTime(2024, 3, 3),
-    new DateTime(2024, 6, 8),
-    new DateTime(2024, 9, 7),
-    new DateTime(2024, 12, 7),
+    new DateTime(2024, 6, 7),
+    new DateTime(2024, 9, 6),
+    new DateTime(2024, 12, 6),
 };
 
 double annualReturn = Financial.InternalRateOfReturn(cashflows, dates);
@@ -91,6 +92,8 @@ All functions live on one static class, `FinancialFunctions.Financial`, mirrorin
 
 - **Decimal where it counts.** `PresentValue`, `FutureValue`, `Payment`, `NetPresentValue` (NPV) and the amortization schedule all compute entirely in `decimal`, including the `(1 + rate)^n` growth factor (via an internal exponentiation-by-squaring helper), so money values never round-trip through floating point. `NumberOfPeriods`, `Rate`, `InternalRateOfReturn` (IRR/XIRR) and `ModifiedInternalRateOfReturn` return a rate rather than a money amount and use `double` for the parts of the computation that require a logarithm, an iterative solve, or a fractional exponent; this mirrors what Excel itself does internally for these functions.
 - **XNPV/XIRR day-count basis.** The date-aware overloads use ACT/365: the discount exponent for a cashflow is `(date - date[0]).TotalDays / 365`. This is the same convention Excel and LibreOffice Calc use, and it means the exponent is generally fractional, which is why those two overloads compute internally in `double`.
+- **XNPV/XIRR date ordering.** Matching Excel, `dates[0]` is the valuation date every other date is measured against, and no other date may fall before it; a date earlier than `dates[0]` throws `ArgumentException` (Excel returns `#NUM!` in this case). Dates after `dates[0]` may appear in any order.
+- **NPER infeasible inputs.** `NumberOfPeriods` throws `ArgumentException` when the payment does not cover the interest accruing on the present value at the given rate, so no finite number of periods reaches the target future value (Excel returns `#NUM!` in this case), rather than silently returning `NaN`.
 - **Solver behavior.** `Rate`, `InternalRateOfReturn` and its date-aware overload solve for a root using Newton's method with a numerically estimated derivative (central finite difference), shared by a single internal root finder rather than three separately hand-derived formulas. If Newton's method diverges, stalls, or steps outside the valid domain (rate > -1), the solver falls back to bisection: it scans outward from the domain floor for a sign change and bisects that bracket. If no such bracket exists, `FinancialConvergenceException` is thrown. The convergence tolerance (1e-7) and iteration cap (100) are documented, named constants on `FinancialSolverDefaults`.
 - **Multiple roots.** A cashflow series can have zero, one, or several mathematically valid internal rates of return, depending on how many times its cumulative balance changes sign (Descartes' rule of signs). `InternalRateOfReturn` returns whichever root Newton's method converges to from the supplied guess, or the first sign-changing root bisection finds while scanning outward. If your cashflows are not a simple invest-then-return pattern, pass a `guess` close to the root you expect, or use `ModifiedInternalRateOfReturn` (MIRR), which has a single closed-form answer by construction.
 - **Amortization rounding.** Each period's interest is `Math.Round(balance * rate, roundingDecimals, MidpointRounding.AwayFromZero)`. The final period's principal is forced to exactly the remaining balance rather than the level payment amount, which guarantees the `PrincipalPaid` column sums to exactly the original principal and the final `RemainingBalance` is exactly zero, regardless of how many cents of rounding drift accumulated along the way.

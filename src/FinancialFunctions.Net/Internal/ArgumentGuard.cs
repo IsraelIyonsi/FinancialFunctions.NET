@@ -68,4 +68,26 @@ internal static class ArgumentGuard
             throw new ArgumentException($"'{datesParamName}' must contain the same number of entries as '{cashflowsParamName}'.", datesParamName);
         }
     }
+
+    /// <summary>
+    /// Ensures no date in <paramref name="dates"/> falls before <c>dates[0]</c>,
+    /// the valuation date every other date is measured against. Matches
+    /// Excel's XNPV/XIRR, which return <c>#NUM!</c> when a date precedes the
+    /// starting date; dates equal to or after the starting date, in any order,
+    /// are permitted.
+    /// </summary>
+    public static void EnsureNoDateBeforeValuationDate(IReadOnlyList<DateTime> dates, string paramName)
+    {
+        var valuationDate = dates[0];
+
+        for (var i = 1; i < dates.Count; i++)
+        {
+            if (dates[i] < valuationDate)
+            {
+                throw new ArgumentException(
+                    $"'{paramName}' must not contain a date earlier than dates[0] ({valuationDate:d}), the valuation date every other date is measured against.",
+                    paramName);
+            }
+        }
+    }
 }
