@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-08-21
+
+### Added
+
+- `Financial.InterestPayment` (Excel `IPMT`) and `Financial.PrincipalPayment` (Excel `PPMT`): the interest and principal portions of the payment for a single period of a level-payment schedule, computed entirely in `decimal` with support for beginning-of-period or end-of-period payment timing (`PaymentTiming`). For any period the two sum back to `Financial.Payment`, and the `PrincipalPayment` values summed across every period repay exactly `-(presentValue + futureValue)`. A `period` outside 1 through the number of periods throws `ArgumentOutOfRangeException` (Excel returns `#NUM!`).
+
 ## [0.1.0] - 2026-08-12
 
 ### Added

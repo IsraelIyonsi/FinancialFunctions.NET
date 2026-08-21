@@ -1,6 +1,6 @@
 # FinancialFunctions.NET
 
-Time-value-of-money and cashflow math for .NET: PV, FV, PMT, RATE, NPER, NPV, IRR, MIRR, date-aware XNPV/XIRR, and loan amortization schedules. Zero dependencies.
+Time-value-of-money and cashflow math for .NET: PV, FV, PMT, IPMT, PPMT, RATE, NPER, NPV, IRR, MIRR, date-aware XNPV/XIRR, and loan amortization schedules. Zero dependencies.
 
 Excel and LibreOffice Calc ship a full set of financial functions. The .NET base class library ships none of them. The one .NET incumbent, `Microsoft.VisualBasic.Financial`, is Windows-only (it depends on COM interop types), VB-flavored, undocumented in its edge-case behavior, and has had no functional change in over a decade. FinancialFunctions.NET is a modern, cross-platform, fully documented replacement: `decimal`-precise where money is at stake, table-driven-tested against independently computed reference values, and dependency-free.
 
@@ -31,6 +31,28 @@ Console.WriteLine(schedule[0]);
 
 decimal totalPrincipalPaid = schedule.Sum(period => period.PrincipalPaid);
 // exactly 200000.00 - the schedule always sums to the original principal, no minor units lost to rounding
+```
+
+### Interest and principal split for a single payment (IPMT / PPMT)
+
+```csharp
+using FinancialFunctions;
+
+decimal principal = 8_000m;
+decimal monthlyRate = 0.10m / 12m;
+int termInMonths = 36;
+
+decimal payment = Financial.Payment(monthlyRate, termInMonths, principal);
+// -258.14 (the level monthly payment, an outflow)
+
+decimal firstInterest = Financial.InterestPayment(monthlyRate, 1, termInMonths, principal);
+// -66.67 (interest portion of payment 1)
+
+decimal firstPrincipal = Financial.PrincipalPayment(monthlyRate, 1, termInMonths, principal);
+// -191.47 (principal portion of payment 1)
+
+// InterestPayment + PrincipalPayment always reconstitutes Payment for the same period:
+// -66.67 + -191.47 == -258.14
 ```
 
 ### Investment return on irregular, dated cashflows (XIRR)
@@ -77,6 +99,8 @@ All functions live on one static class, `FinancialFunctions.Financial`, mirrorin
 | `Financial.PresentValue(rate, nper, pmt, fv, timing)` | `PV` | `decimal` |
 | `Financial.FutureValue(rate, nper, pmt, pv, timing)` | `FV` | `decimal` |
 | `Financial.Payment(rate, nper, pv, fv, timing)` | `PMT` | `decimal` |
+| `Financial.InterestPayment(rate, period, nper, pv, fv, timing)` | `IPMT` | `decimal` |
+| `Financial.PrincipalPayment(rate, period, nper, pv, fv, timing)` | `PPMT` | `decimal` |
 | `Financial.NumberOfPeriods(rate, pmt, pv, fv, timing)` | `NPER` | `double` |
 | `Financial.Rate(nper, pmt, pv, fv, timing, guess)` | `RATE` | `double` |
 | `Financial.NetPresentValue(rate, cashflows)` | `NPV` | `decimal` |

@@ -6,6 +6,8 @@ namespace FinancialFunctions.Internal;
 /// </summary>
 internal static class ArgumentGuard
 {
+    private const int FirstValidPeriod = 1;
+
     public static void EnsureRateAboveDomainFloor(decimal rate, string paramName)
     {
         if (rate <= (decimal)FinancialSolverDefaults.MinimumRate)
@@ -19,6 +21,17 @@ internal static class ArgumentGuard
         if (numberOfPeriods <= 0)
         {
             throw new ArgumentOutOfRangeException(paramName, numberOfPeriods, "Number of periods must be greater than zero.");
+        }
+    }
+
+    public static void EnsurePeriodInRange(int period, int numberOfPeriods, string paramName)
+    {
+        if (period < FirstValidPeriod || period > numberOfPeriods)
+        {
+            throw new ArgumentOutOfRangeException(
+                paramName,
+                period,
+                $"Period must be between {FirstValidPeriod} and the number of periods ({numberOfPeriods}), inclusive (Excel returns #NUM! otherwise).");
         }
     }
 

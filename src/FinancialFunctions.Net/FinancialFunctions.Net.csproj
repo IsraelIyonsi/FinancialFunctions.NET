@@ -12,15 +12,15 @@
 
   <PropertyGroup>
     <PackageId>FinancialFunctions.Net</PackageId>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <Title>FinancialFunctions.NET</Title>
     <Authors>Israel Iyonsi</Authors>
     <Copyright>Copyright (c) 2026 Israel Iyonsi</Copyright>
-    <Description>Time-value-of-money and cashflow math for .NET: PV, FV, PMT, RATE, NPER, NPV, IRR, MIRR, date-aware XNPV/XIRR and loan amortization schedules. Zero dependencies, decimal-precise money output.</Description>
+    <Description>Time-value-of-money and cashflow math for .NET: PV, FV, PMT, IPMT, PPMT, RATE, NPER, NPV, IRR, MIRR, date-aware XNPV/XIRR and loan amortization schedules. Zero dependencies, decimal-precise money output.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/IsraelIyonsi/FinancialFunctions.NET</RepositoryUrl>
     <PackageProjectUrl>https://github.com/IsraelIyonsi/FinancialFunctions.NET</PackageProjectUrl>
-    <PackageTags>finance;npv;irr;xirr;xnpv;mirr;amortization;time-value-of-money;pmt;annuity</PackageTags>
+    <PackageTags>finance;npv;irr;xirr;xnpv;mirr;amortization;time-value-of-money;pmt;ipmt;ppmt;annuity</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageReleaseNotes>See https://github.com/IsraelIyonsi/FinancialFunctions.NET/blob/main/CHANGELOG.md</PackageReleaseNotes>
     <RepositoryType>git</RepositoryType>

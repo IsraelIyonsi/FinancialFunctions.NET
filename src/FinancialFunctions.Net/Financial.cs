@@ -27,6 +27,8 @@ namespace FinancialFunctions;
 /// </remarks>
 public static class Financial
 {
+    private const int FirstPeriod = 1;
+
     /// <summary>
     /// Computes the present value of a series of future, equal periodic
     /// payments plus an optional lump-sum future value, given a constant
@@ -112,6 +114,74 @@ public static class Financial
         var typeAdjustment = 1m + (rate * (int)timing);
 
         return -((presentValue * growthFactor) + futureValue) / (typeAdjustment * annuityFactor);
+    }
+
+    /// <summary>
+    /// Computes the interest portion of the payment for a single period of a
+    /// loan or investment amortized with equal periodic payments at a constant
+    /// periodic interest rate. Equivalent to Excel's IPMT function.
+    /// </summary>
+    /// <param name="rate">The periodic interest rate, greater than -1.</param>
+    /// <param name="period">The period whose interest portion is wanted, from 1 through <paramref name="numberOfPeriods"/> inclusive.</param>
+    /// <param name="numberOfPeriods">The total number of payment periods.</param>
+    /// <param name="presentValue">The amount borrowed or invested today.</param>
+    /// <param name="futureValue">The cash balance desired after the last payment. Defaults to zero.</param>
+    /// <param name="timing">Whether payments fall due at the start or end of each period. Defaults to end of period.</param>
+    /// <returns>The interest paid in <paramref name="period"/>, carrying the same sign as <see cref="Payment(decimal, int, decimal, decimal, PaymentTiming)"/>. Adding it to <see cref="PrincipalPayment(decimal, int, int, decimal, decimal, PaymentTiming)"/> for the same period reproduces the level payment exactly.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="rate"/> is not greater than -1, <paramref name="numberOfPeriods"/> is not greater than zero, or <paramref name="period"/> is outside the range 1 through <paramref name="numberOfPeriods"/> (equivalent to Excel's <c>#NUM!</c> error).</exception>
+    public static decimal InterestPayment(decimal rate, int period, int numberOfPeriods, decimal presentValue, decimal futureValue = 0m, PaymentTiming timing = PaymentTiming.EndOfPeriod)
+    {
+        ArgumentGuard.EnsureRateAboveDomainFloor(rate, nameof(rate));
+        ArgumentGuard.EnsurePeriodsPositive(numberOfPeriods, nameof(numberOfPeriods));
+        ArgumentGuard.EnsurePeriodInRange(period, numberOfPeriods, nameof(period));
+
+        if (rate == 0m)
+        {
+            return 0m;
+        }
+
+        var payment = Payment(rate, numberOfPeriods, presentValue, futureValue, timing);
+        var completedPeriods = period - FirstPeriod;
+        decimal outstandingBalance;
+
+        if (period == FirstPeriod)
+        {
+            outstandingBalance = timing == PaymentTiming.BeginningOfPeriod ? 0m : -presentValue;
+        }
+        else if (timing == PaymentTiming.BeginningOfPeriod)
+        {
+            outstandingBalance = OutstandingBalance(rate, completedPeriods - 1, payment, presentValue, PaymentTiming.BeginningOfPeriod) - payment;
+        }
+        else
+        {
+            outstandingBalance = OutstandingBalance(rate, completedPeriods, payment, presentValue, PaymentTiming.EndOfPeriod);
+        }
+
+        return outstandingBalance * rate;
+    }
+
+    /// <summary>
+    /// Computes the principal portion of the payment for a single period of a
+    /// loan or investment amortized with equal periodic payments at a constant
+    /// periodic interest rate. Equivalent to Excel's PPMT function, and equal
+    /// to <see cref="Payment(decimal, int, decimal, decimal, PaymentTiming)"/>
+    /// minus <see cref="InterestPayment(decimal, int, int, decimal, decimal, PaymentTiming)"/>
+    /// for the same period.
+    /// </summary>
+    /// <param name="rate">The periodic interest rate, greater than -1.</param>
+    /// <param name="period">The period whose principal portion is wanted, from 1 through <paramref name="numberOfPeriods"/> inclusive.</param>
+    /// <param name="numberOfPeriods">The total number of payment periods.</param>
+    /// <param name="presentValue">The amount borrowed or invested today.</param>
+    /// <param name="futureValue">The cash balance desired after the last payment. Defaults to zero.</param>
+    /// <param name="timing">Whether payments fall due at the start or end of each period. Defaults to end of period.</param>
+    /// <returns>The principal repaid in <paramref name="period"/>, carrying the same sign as <see cref="Payment(decimal, int, decimal, decimal, PaymentTiming)"/>. Summed across every period it repays exactly <c>-(presentValue + futureValue)</c>.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="rate"/> is not greater than -1, <paramref name="numberOfPeriods"/> is not greater than zero, or <paramref name="period"/> is outside the range 1 through <paramref name="numberOfPeriods"/> (equivalent to Excel's <c>#NUM!</c> error).</exception>
+    public static decimal PrincipalPayment(decimal rate, int period, int numberOfPeriods, decimal presentValue, decimal futureValue = 0m, PaymentTiming timing = PaymentTiming.EndOfPeriod)
+    {
+        var interest = InterestPayment(rate, period, numberOfPeriods, presentValue, futureValue, timing);
+        var payment = Payment(rate, numberOfPeriods, presentValue, futureValue, timing);
+
+        return payment - interest;
     }
 
     /// <summary>
@@ -395,6 +465,24 @@ public static class Financial
     private static decimal AnnuityFactor(decimal rate, int numberOfPeriods, decimal growthFactor)
     {
         return rate == 0m ? numberOfPeriods : (growthFactor - 1m) / rate;
+    }
+
+    /// <summary>
+    /// Computes the outstanding balance carried into the interest calculation
+    /// for a single period, using the same closed form as
+    /// <see cref="FutureValue(decimal, int, decimal, decimal, PaymentTiming)"/>
+    /// but permitting a period count of zero. That zero case arises for the
+    /// annuity-due branch of <see cref="InterestPayment(decimal, int, int, decimal, decimal, PaymentTiming)"/>,
+    /// which the public guard on <see cref="FutureValue(decimal, int, decimal, decimal, PaymentTiming)"/>
+    /// would otherwise reject.
+    /// </summary>
+    private static decimal OutstandingBalance(decimal rate, int numberOfPeriods, decimal payment, decimal presentValue, PaymentTiming timing)
+    {
+        var growthFactor = DecimalMath.Pow(1m + rate, numberOfPeriods);
+        var annuityFactor = (growthFactor - 1m) / rate;
+        var typeAdjustedPayment = payment * (1m + (rate * (int)timing));
+
+        return -((presentValue * growthFactor) + (typeAdjustedPayment * annuityFactor));
     }
 
     /// <summary>
